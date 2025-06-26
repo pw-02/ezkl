@@ -1569,6 +1569,7 @@ fn create_evm_data_attestation(
     output_source,
     rpc_url=None,
 ))]
+#[allow(dead_code)]
 fn setup_test_evm_witness(
     data_path: PathBuf,
     compiled_circuit_path: PathBuf,
@@ -1869,7 +1870,7 @@ fn ezkl(_py: Python<'_>, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(deploy_vk_evm, m)?)?;
     m.add_function(wrap_pyfunction!(deploy_da_evm, m)?)?;
     m.add_function(wrap_pyfunction!(verify_evm, m)?)?;
-    m.add_function(wrap_pyfunction!(setup_test_evm_witness, m)?)?;
+    // m.add_function(wrap_pyfunction!(_test_evm_witness, m)?)?;
     m.add_function(wrap_pyfunction!(create_evm_verifier_aggr, m)?)?;
     m.add_function(wrap_pyfunction!(create_evm_data_attestation, m)?)?;
 

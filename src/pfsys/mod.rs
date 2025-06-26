@@ -33,13 +33,14 @@ use snark_verifier::loader::native::NativeLoader;
 use snark_verifier::system::halo2::transcript::evm::EvmTranscript;
 use snark_verifier::verifier::plonk::PlonkProtocol;
 use std::error::Error;
+use std::fs;
 use std::fs::File;
-use std::io::{self, BufReader, BufWriter, Cursor, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, Cursor, Write};
 use std::ops::Deref;
 use std::path::PathBuf;
 use thiserror::Error as thisError;
 use tosubcommand::ToFlags;
-
+use std::fs::OpenOptions;
 use halo2curves::bn256::{Bn256, Fr, G1Affine};
 use crate::logger::ProverPerformanceMetrics;
 use crate::logger::write_perf_metrics_to_csv;
@@ -493,6 +494,30 @@ where
     }
 }
 
+fn write_keygen_times(vk_time: f64, pk_time: f64, file_path: &str) -> std::io::Result<()> {
+    let mut file = OpenOptions::new().write(true).create(true).truncate(true).open(file_path)?;
+    writeln!(file, "{},{}", vk_time, pk_time)?;
+    Ok(())
+}
+
+fn write_loadkey_time(time: f64, file_path: &str) -> std::io::Result<()> {
+    let mut file = OpenOptions::new().write(true).create(true).truncate(true).open(file_path)?;
+    writeln!(file, "{}", time)?; // Write VK time as first line
+    Ok(())
+}
+
+
+fn read_keygen_times(file_path: &str) -> std::io::Result<(f64, f64)> {
+    let file = File::open(file_path)?;
+    let mut reader = BufReader::new(file);
+    let mut line = String::new();
+    reader.read_line(&mut line)?;
+    let parts: Vec<&str> = line.trim().split(',').collect();
+    let vk_time: f64 = parts[0].parse().unwrap_or(0.0);
+    let pk_time: f64 = parts[1].parse().unwrap_or(0.0);
+    Ok((vk_time, pk_time))
+}
+
 /// Creates a [VerifyingKey] and [ProvingKey] for a [crate::graph::GraphCircuit] (`circuit`) with specific [CommitmentScheme] parameters (`params`).
 pub fn create_keys<Scheme: CommitmentScheme, C: Circuit<Scheme::Scalar>>(
     circuit: &C,
@@ -510,16 +535,43 @@ where
     let now = Instant::now();
     trace!("preparing VK");
     let vk = keygen_vk_custom(params, &empty_circuit, !disable_selector_compression)?;
-    let elapsed = now.elapsed();
-    info!("VK took {}.{}", elapsed.as_secs(), elapsed.subsec_millis());
+    let vk_elapsed = now.elapsed();
+    let vk_time = vk_elapsed.as_secs_f64();
+
+    info!("VK took {}.{}", vk_elapsed.as_secs(), vk_elapsed.subsec_millis());
 
     // Initialize the proving key
     let now = Instant::now();
     let pk = keygen_pk(params, vk, &empty_circuit)?;
-    let elapsed = now.elapsed();
-    info!("PK took {}.{}", elapsed.as_secs(), elapsed.subsec_millis());
+    let pk_elapsed = now.elapsed();
+    let pk_time = pk_elapsed.as_secs_f64();
+
+    info!("PK took {}.{:03}", pk_elapsed.as_secs(), pk_elapsed.subsec_millis());
+
+    write_keygen_times(vk_time, pk_time, "keygen_times.txt")?;
+
     Ok(pk)
 }
+
+fn read_and_remove_time(file_path: &str) -> std::io::Result<f64> {
+    if PathBuf::from(file_path).exists() {
+        let file = File::open(file_path)?;
+        let mut reader = BufReader::new(file);
+        let mut line = String::new();
+        let bytes_read = reader.read_line(&mut line)?;
+        // println!("Read from '{}': '{}', bytes: {}", file_path, line, bytes_read); // Debug print
+        let time: f64 = line.trim().parse().unwrap_or(0.0);
+        // println!("Parsed time: {}", time); // Debug print
+        fs::remove_file(file_path)?;
+        Ok(time)
+    } else {
+        println!("File {} does not exist, returning 0.0", file_path);
+        Ok(0.0)
+    }
+}
+
+
+
 
 /// a wrapper around halo2's create_proof
 #[allow(clippy::too_many_arguments)]
@@ -557,6 +609,21 @@ where
 
     let mut perf_metrics = ProverPerformanceMetrics::default();
 
+    // if file 'keygen_times.txt' exists
+    if PathBuf::from("keygen_times.txt").exists() {
+        let (vk_time, pk_time) = read_keygen_times("keygen_times.txt")?;
+        perf_metrics.vk_time = vk_time;
+        perf_metrics.pk_time = pk_time;
+        fs::remove_file("keygen_times.txt")?;
+
+    } else {
+        // if file does not exist, write 0s
+        perf_metrics.vk_time = 0.0;
+        perf_metrics.pk_time = 0.0;
+    }
+    perf_metrics.read_pk_time = read_and_remove_time("load_pk_time.txt")?;
+
+    // Usage:
     let strategy = Strategy::new(params.verifier_params());
     let mut transcript = TranscriptWriterBuffer::<_, Scheme::Curve, _>::init(vec![]);
     #[cfg(feature = "det-prove")]
@@ -620,29 +687,63 @@ where
     );
 
     // sanity check that the generated proof is valid
-    if check_mode == CheckMode::SAFE {
-        debug!("verifying generated proof");
-        let verify_start  = Instant::now();
-        let verifier_params = params.verifier_params();
-        verify_proof_circuit::<V, Scheme, Strategy, E, TR>(
-            &checkable_pf,
-            verifier_params,
-            pk.get_vk(),
-            strategy,
-            verifier_params.n(),
-        )?;
-        let verify_elapsed = verify_start.elapsed();
-        perf_metrics.verify_time  = verify_elapsed.as_secs_f64();
-    }
+    // if check_mode == CheckMode::SAFE {
+    //     debug!("verifying generated proof");
+    //     let verify_start  = Instant::now();
+    //     let verifier_params = params.verifier_params();
+    //     verify_proof_circuit::<V, Scheme, Strategy, E, TR>(
+    //         &checkable_pf,
+    //         verifier_params,
+    //         pk.get_vk(),
+    //         strategy,
+    //         verifier_params.n(),
+    //     )?;
+    //     let verify_elapsed = verify_start.elapsed();
+    //     perf_metrics.verify_time  = verify_elapsed.as_secs_f64();
+    // }
     let elapsed = now.elapsed();
+
+    debug!("verifying generated proof");
+    let verify_start  = Instant::now();
+    let verifier_params = params.verifier_params();
+    verify_proof_circuit::<V, Scheme, Strategy, E, TR>(
+        &checkable_pf,
+        verifier_params,
+        pk.get_vk(),
+        strategy,
+        verifier_params.n(),
+    )?;
+    let verify_elapsed = verify_start.elapsed();
+    perf_metrics.verify_time  = verify_elapsed.as_secs_f64();
+
     info!(
         "proof took {}.{}",
         elapsed.as_secs(),
         elapsed.subsec_millis()
     );
+    
+    // debug!("verifying generated proof");
+    //     let verify_start  = Instant::now();
+    //     let verifier_params = params.verifier_params();
+    //     verify_proof_circuit::<V, Scheme, Strategy, E, TR>(
+    //         &checkable_pf,
+    //         verifier_params,
+    //         pk.get_vk(),
+    //         strategy,
+    //         verifier_params.n(),
+    //     )?;
+    //     let verify_elapsed = verify_start.elapsed();
+    //     perf_metrics.verify_time  = verify_elapsed.as_secs_f64();
     // Update performance metrics if provided
     perf_metrics.proof_time = elapsed.as_secs_f64();
-    let _ = write_perf_metrics_to_csv("halo2_circuit.csv", &perf_metrics)?;
+    // perf_metrics.read_vk_time = read_and_remove_time("load_vk_time.txt")?;
+    use std::env;
+    // let _ = write_perf_metrics_to_csv("halo2_circuit.csv", &perf_metrics)?;
+    let log_dir = env::var("EZKL_LOG_DIR").unwrap_or_else(|_| ".".to_string());
+    std::fs::create_dir_all(&log_dir).ok();
+    let csv_path = PathBuf::from(&log_dir).join("halo2_circuit.csv");
+    println!("Writing halo2 stats to {:?}", csv_path);
+    let _ = write_perf_metrics_to_csv(csv_path.to_str().unwrap(), &perf_metrics)?;
 
     Ok(checkable_pf)
 }
@@ -768,7 +869,8 @@ where
     C: Circuit<Scheme::Scalar>,
     Scheme::Curve: SerdeObject + CurveAffine,
     Scheme::Scalar: PrimeField + SerdeObject + FromUniformBytes<64>,
-{
+{    
+    let now = Instant::now();
     info!("loading verification key from {:?}", path);
     let f =
         File::open(path.clone()).map_err(|_| format!("failed to load vk at {}", path.display()))?;
@@ -778,6 +880,11 @@ where
         serde_format_from_str(&EZKL_KEY_FORMAT),
         params,
     )?;
+    let vk_elapsed = now.elapsed();
+    let vk_time = vk_elapsed.as_secs_f64();
+
+    info!("Load VK took {}.{:03}", vk_elapsed.as_secs(), vk_elapsed.subsec_millis());
+    // write_loadkey_time(vk_time, "load_vk_time.txt")?;
     info!("done loading verification key ✅");
     Ok(vk)
 }
@@ -791,7 +898,8 @@ where
     C: Circuit<Scheme::Scalar>,
     Scheme::Curve: SerdeObject + CurveAffine,
     Scheme::Scalar: PrimeField + SerdeObject + FromUniformBytes<64>,
-{
+{   
+    let now = Instant::now();
     info!("loading proving key from {:?}", path);
     let f =
         File::open(path.clone()).map_err(|_| format!("failed to load pk at {}", path.display()))?;
@@ -801,6 +909,12 @@ where
         serde_format_from_str(&EZKL_KEY_FORMAT),
         params,
     )?;
+    let pk_elapsed = now.elapsed();
+    let pk_time = pk_elapsed.as_secs_f64();
+
+    info!("Load PK took {}.{:03}", pk_elapsed.as_secs(), pk_elapsed.subsec_millis());
+    write_loadkey_time(pk_time, "load_pk_time.txt")?;
+
     info!("done loading proving key ✅");
     Ok(pk)
 }
