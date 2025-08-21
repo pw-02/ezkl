@@ -36,13 +36,14 @@ pub struct ProverPerformanceMetrics {
     // pub total_fft_time: f64,
     // pub total_msm_time: f64,
     // pub check_mode: str,
-    pub vk_time: f64,
-    pub pk_time: f64,
-    // pub read_vk_time: f64,
-    pub read_pk_time: f64,
+    pub create_vk_time: f64,
+    pub create_pk_time: f64,
+    // pub setup_time: f64,
 
-    pub setup_time: f64,
+    pub read_vk_time: f64,
+    pub read_pk_time: f64,
     pub proof_time: f64,
+
     pub verify_time: f64,
 }
 
@@ -66,7 +67,7 @@ pub fn write_perf_metrics_to_csv(file_path: &str, metrics: &ProverPerformanceMet
         // Write the header if the file is empty
         wtr.write_record(&[
             "circuit_size(n)", 
-            "log_circuit_size (k)", 
+            "circuit_size (k)", 
             "extended_k", 
             "quotient_poly_degree", 
             "max_gate_degree",
@@ -78,13 +79,13 @@ pub fn write_perf_metrics_to_csv(file_path: &str, metrics: &ProverPerformanceMet
             "num_challenges", 
             "minimum_rows", 
             "blinding_factors",
-            "vk_time",
-            "pk_time",
-            // "read_vk_time",
-            "read_pk_time",
-            "setup_time", 
-            "proof_time", 
-            "verify_time"
+            "create_vk_time(s)",
+            "create_pk_time(s)",
+            // "setup_time(s)",
+            "read_vk_time(s)",
+            "read_pk_time(s)",
+            "proof_time(s)",
+            "verify_time(s)"
         ])?;
     }
 
@@ -103,12 +104,11 @@ pub fn write_perf_metrics_to_csv(file_path: &str, metrics: &ProverPerformanceMet
         metrics.num_challenges.to_string(),
         metrics.minimum_rows.to_string(),
         metrics.blinding_factors.to_string(),
-        metrics.vk_time.to_string(),
-        metrics.pk_time.to_string(),
-        // metrics.read_vk_time.to_string(),
+        metrics.create_vk_time.to_string(),
+        metrics.create_pk_time.to_string(),
+        // metrics.setup_time.to_string(),
+        metrics.read_vk_time.to_string(),
         metrics.read_pk_time.to_string(),
-
-        metrics.setup_time.to_string(),
         metrics.proof_time.to_string(),
         metrics.verify_time.to_string(),
     ])?;
@@ -124,30 +124,10 @@ pub fn write_perf_metrics_to_csv(file_path: &str, metrics: &ProverPerformanceMet
 
 #[test]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // let metrics = ProverPerformanceMetrics {
-    //     n: 10,
-    //     k: 2,
-    //     extended_k: 3,
-    //     quotient_poly_degree: 100,
-    //     max_gate_degree: 10,
-    //     cs_degree: 20,
-    //     num_fixed_columns: 5,
-    //     num_advice_columns: 4,
-    //     num_instance_columns: 3,
-    //     num_selectors: 2,
-    //     num_challenges: 1,
-    //     minimum_rows: 50,
-    //     blinding_factors: 10,
-    //     setup_time: 0.5,
-    //     proof_time: 1.2,
-    //     verify_time: 0.8
-    // };
     let metrics: ProverPerformanceMetrics = Default::default();
     write_perf_metrics_to_csv("halo2_circuit.csv", &metrics)?;
-
     Ok(())
 }
-
 /// sets the log level color
 #[allow(dead_code)]
 pub fn level_color(level: &log::Level, msg: &str) -> String {

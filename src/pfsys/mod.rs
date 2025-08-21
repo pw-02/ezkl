@@ -536,19 +536,14 @@ where
     trace!("preparing VK");
     let vk = keygen_vk_custom(params, &empty_circuit, !disable_selector_compression)?;
     let vk_elapsed = now.elapsed();
-    let vk_time = vk_elapsed.as_secs_f64();
-
     info!("VK took {}.{}", vk_elapsed.as_secs(), vk_elapsed.subsec_millis());
 
     // Initialize the proving key
     let now = Instant::now();
     let pk = keygen_pk(params, vk, &empty_circuit)?;
     let pk_elapsed = now.elapsed();
-    let pk_time = pk_elapsed.as_secs_f64();
-
     info!("PK took {}.{:03}", pk_elapsed.as_secs(), pk_elapsed.subsec_millis());
-
-    write_keygen_times(vk_time, pk_time, "keygen_times.txt")?;
+    write_keygen_times( vk_elapsed.as_secs_f64(), pk_elapsed.as_secs_f64(), "keygen_times.txt")?;
 
     Ok(pk)
 }
@@ -612,14 +607,14 @@ where
     // if file 'keygen_times.txt' exists
     if PathBuf::from("keygen_times.txt").exists() {
         let (vk_time, pk_time) = read_keygen_times("keygen_times.txt")?;
-        perf_metrics.vk_time = vk_time;
-        perf_metrics.pk_time = pk_time;
+        perf_metrics.create_vk_time = vk_time;
+        perf_metrics.create_pk_time = pk_time;
         fs::remove_file("keygen_times.txt")?;
 
     } else {
         // if file does not exist, write 0s
-        perf_metrics.vk_time = 0.0;
-        perf_metrics.pk_time = 0.0;
+        perf_metrics.create_vk_time = 0.0;
+        perf_metrics.create_pk_time = 0.0;
     }
     perf_metrics.read_pk_time = read_and_remove_time("load_pk_time.txt")?;
 
@@ -702,7 +697,9 @@ where
     //     perf_metrics.verify_time  = verify_elapsed.as_secs_f64();
     // }
     let elapsed = now.elapsed();
-
+   
+    perf_metrics.proof_time = elapsed.as_secs_f64();
+    
     debug!("verifying generated proof");
     let verify_start  = Instant::now();
     let verifier_params = params.verifier_params();
@@ -735,14 +732,15 @@ where
     //     let verify_elapsed = verify_start.elapsed();
     //     perf_metrics.verify_time  = verify_elapsed.as_secs_f64();
     // Update performance metrics if provided
-    perf_metrics.proof_time = elapsed.as_secs_f64();
-    // perf_metrics.read_vk_time = read_and_remove_time("load_vk_time.txt")?;
+    // perf_metrics.proof_time = elapsed.as_secs_f64();
+    
+    perf_metrics.read_vk_time = read_and_remove_time("load_vk_time.txt")?;
     use std::env;
     // let _ = write_perf_metrics_to_csv("halo2_circuit.csv", &perf_metrics)?;
     let log_dir = env::var("EZKL_LOG_DIR").unwrap_or_else(|_| ".".to_string());
     std::fs::create_dir_all(&log_dir).ok();
     let csv_path = PathBuf::from(&log_dir).join("halo2_circuit.csv");
-    println!("Writing halo2 stats to {:?}", csv_path);
+    // println!("Writing halo2 stats to {:?}", csv_path);
     let _ = write_perf_metrics_to_csv(csv_path.to_str().unwrap(), &perf_metrics)?;
 
     Ok(checkable_pf)
@@ -884,7 +882,7 @@ where
     let vk_time = vk_elapsed.as_secs_f64();
 
     info!("Load VK took {}.{:03}", vk_elapsed.as_secs(), vk_elapsed.subsec_millis());
-    // write_loadkey_time(vk_time, "load_vk_time.txt")?;
+    write_loadkey_time(vk_time, "load_vk_time.txt")?;
     info!("done loading verification key ✅");
     Ok(vk)
 }
