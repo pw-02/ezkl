@@ -8,7 +8,7 @@ maturin develop --release --features python-bindings
 
 maturin build --release --features python-bindings --out /home/pw/dzkml/ezkl/wheels
 
-maturin build --release --features python-bindings --out ./wheels
+maturin build --release --features python-bindings --out ./wheels/cpu
 
 
 ezkl\wheels
