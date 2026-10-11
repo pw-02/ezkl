@@ -2,8 +2,8 @@ use crate::circuit::CheckMode;
 use crate::graph::{GraphCircuit, GraphWitness};
 use crate::pfsys::evm::aggregation_kzg::PoseidonTranscript;
 use crate::pfsys::{
-    create_keys, create_proof_circuit, save_pk, save_vk, ProofSplitCommit, ProofType, Snark,
-    StrategyType, TranscriptType,
+    create_keys, create_proof_circuit, save_pk, save_vk, ProofSplitCommit, ProofType, StrategyType,
+    TranscriptType,
 };
 use crate::Commitments;
 use halo2_proofs::poly::ipa::commitment::IPACommitmentScheme;
@@ -14,7 +14,7 @@ use halo2_proofs::poly::kzg::commitment::KZGCommitmentScheme;
 use halo2_proofs::poly::kzg::multiopen::{ProverSHPLONK, VerifierSHPLONK};
 use halo2_proofs::poly::kzg::strategy::AccumulatorStrategy as KZGAccumulatorStrategy;
 use halo2_proofs::poly::kzg::strategy::SingleStrategy as KZGSingleStrategy;
-use halo2curves::bn256::{Bn256, Fr, G1Affine};
+use halo2curves::bn256::{Bn256, G1Affine};
 use snark_verifier::loader::native::NativeLoader;
 use snark_verifier::system::halo2::compile;
 use snark_verifier::system::halo2::transcript::evm::EvmTranscript;
@@ -34,7 +34,6 @@ use pyo3::types::PyDict;
 /// Timing information returned by the fused cold path.
 #[derive(Debug)]
 pub(crate) struct FusedSetupAndProveResult {
-    pub snark: Snark<Fr, G1Affine>,
     /// Includes loading prover parameters/SRS and generating VK + PK.
     pub keygen_time_s: f64,
     /// Time spent creating the proof, excluding proof serialization.
@@ -261,7 +260,6 @@ pub(crate) fn setup_and_prove(
     let proof_persist_time_s = proof_persist_start.elapsed().as_secs_f64();
 
     Ok(FusedSetupAndProveResult {
-        snark,
         keygen_time_s,
         prove_time_s,
         proof_persist_time_s,
@@ -274,8 +272,8 @@ pub(crate) fn setup_and_prove(
 ///
 /// The main `ezkl` extension module predates this experiment. To avoid a large,
 /// fragile rewrite of that binding file, the same shared library also exports
-/// a tiny `_ezkl_fused` module. zkInfer loads this module from `ezkl.__file__`
-/// and calls this function only on a setup-cache miss.
+/// a tiny `_ezkl_fused` module. zkInfer loads this module from the native EZKL
+/// extension and calls this function only on a setup-cache miss.
 #[cfg(feature = "python-bindings")]
 #[pyfunction(name = "setup_and_prove", signature = (
     witness,
