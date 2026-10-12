@@ -20,9 +20,10 @@ use snark_verifier::system::halo2::compile;
 use snark_verifier::system::halo2::transcript::evm::EvmTranscript;
 use snark_verifier::system::halo2::Config;
 use std::error::Error;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(feature = "python-bindings")]
 use pyo3::exceptions::PyRuntimeError;
@@ -30,6 +31,9 @@ use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 #[cfg(feature = "python-bindings")]
 use pyo3::types::PyDict;
+
+const STAGE_TRACE_VERSION: u32 = 1;
+const STAGE_TRACE_FILENAME: &str = "fused_stage_transitions.csv";
 
 /// Timing information returned by the fused cold path.
 #[derive(Debug)]
@@ -43,7 +47,56 @@ pub(crate) struct FusedSetupAndProveResult {
     pub total_time_s: f64,
 }
 
-fn publish_stage(status_path: &Option<PathBuf>, stage: &str) -> Result<(), Box<dyn Error>> {
+fn stage_trace_path(status_path: &Option<PathBuf>) -> Option<PathBuf> {
+    status_path
+        .as_ref()
+        .map(|path| path.with_file_name(STAGE_TRACE_FILENAME))
+}
+
+fn initialize_stage_trace(status_path: &Option<PathBuf>) -> Result<(), Box<dyn Error>> {
+    let Some(path) = stage_trace_path(status_path) else {
+        return Ok(());
+    };
+
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+
+    let mut file = fs::File::create(path)?;
+    writeln!(file, "timestamp_unix_us,elapsed_s,stage,event")?;
+    file.flush()?;
+    Ok(())
+}
+
+fn append_stage_trace(
+    status_path: &Option<PathBuf>,
+    stage_trace_elapsed_base_s: f64,
+    total_start: &Instant,
+    stage: &str,
+) -> Result<(), Box<dyn Error>> {
+    let Some(path) = stage_trace_path(status_path) else {
+        return Ok(());
+    };
+
+    let timestamp_unix_us = SystemTime::now()
+        .duration_since(UNIX_EPOCH)?
+        .as_micros();
+    let elapsed_s = stage_trace_elapsed_base_s + total_start.elapsed().as_secs_f64();
+
+    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+    writeln!(file, "{timestamp_unix_us},{elapsed_s:.9},{stage},enter")?;
+    file.flush()?;
+    Ok(())
+}
+
+fn publish_stage(
+    status_path: &Option<PathBuf>,
+    stage_trace_elapsed_base_s: f64,
+    total_start: &Instant,
+    stage: &str,
+) -> Result<(), Box<dyn Error>> {
     if let Some(path) = status_path {
         if let Some(parent) = path.parent() {
             if !parent.as_os_str().is_empty() {
@@ -52,6 +105,13 @@ fn publish_stage(status_path: &Option<PathBuf>, stage: &str) -> Result<(), Box<d
         }
         fs::write(path, stage)?;
     }
+
+    append_stage_trace(
+        status_path,
+        stage_trace_elapsed_base_s,
+        total_start,
+        stage,
+    )?;
     Ok(())
 }
 
@@ -76,8 +136,10 @@ pub(crate) fn setup_and_prove(
     check_mode: CheckMode,
     disable_selector_compression: bool,
     status_path: Option<PathBuf>,
+    stage_trace_elapsed_base_s: f64,
 ) -> Result<FusedSetupAndProveResult, Box<dyn Error>> {
     let total_start = Instant::now();
+    initialize_stage_trace(&status_path)?;
 
     // Load the request-specific witness and compiled circuit exactly once.
     let data = GraphWitness::from_path(witness_path)?;
@@ -93,7 +155,12 @@ pub(crate) fn setup_and_prove(
     let strategy: StrategyType = proof_type.into();
     let transcript: TranscriptType = proof_type.into();
 
-    publish_stage(&status_path, "KEY_GEN")?;
+    publish_stage(
+        &status_path,
+        stage_trace_elapsed_base_s,
+        &total_start,
+        "KEY_GEN",
+    )?;
     let keygen_start = Instant::now();
 
     let (mut snark, keygen_time_s, phase_times) = match commitment {
@@ -112,7 +179,12 @@ pub(crate) fn setup_and_prove(
             )?;
             let keygen_time_s = keygen_start.elapsed().as_secs_f64();
 
-            publish_stage(&status_path, "PROVING")?;
+            publish_stage(
+                &status_path,
+                stage_trace_elapsed_base_s,
+                &total_start,
+                "PROVING",
+            )?;
             let prove_start = Instant::now();
             let snark = match strategy {
                 StrategyType::Single => create_proof_circuit::<
@@ -165,7 +237,12 @@ pub(crate) fn setup_and_prove(
             };
             let prove_time_s = prove_start.elapsed().as_secs_f64();
 
-            publish_stage(&status_path, "PERSISTING_KEYS")?;
+            publish_stage(
+                &status_path,
+                stage_trace_elapsed_base_s,
+                &total_start,
+                "PERSISTING_KEYS",
+            )?;
             let persist_start = Instant::now();
             save_vk::<G1Affine>(&vk_path, pk.get_vk())?;
             save_pk::<G1Affine>(&pk_path, &pk)?;
@@ -186,7 +263,12 @@ pub(crate) fn setup_and_prove(
             )?;
             let keygen_time_s = keygen_start.elapsed().as_secs_f64();
 
-            publish_stage(&status_path, "PROVING")?;
+            publish_stage(
+                &status_path,
+                stage_trace_elapsed_base_s,
+                &total_start,
+                "PROVING",
+            )?;
             let prove_start = Instant::now();
             let snark = match strategy {
                 StrategyType::Single => create_proof_circuit::<
@@ -239,7 +321,12 @@ pub(crate) fn setup_and_prove(
             };
             let prove_time_s = prove_start.elapsed().as_secs_f64();
 
-            publish_stage(&status_path, "PERSISTING_KEYS")?;
+            publish_stage(
+                &status_path,
+                stage_trace_elapsed_base_s,
+                &total_start,
+                "PERSISTING_KEYS",
+            )?;
             let persist_start = Instant::now();
             save_vk::<G1Affine>(&vk_path, pk.get_vk())?;
             save_pk::<G1Affine>(&pk_path, &pk)?;
@@ -252,7 +339,12 @@ pub(crate) fn setup_and_prove(
     let (prove_time_s, key_persist_time_s) = phase_times;
     snark.pretty_public_inputs = pretty_public_inputs;
 
-    publish_stage(&status_path, "PERSISTING_PROOF")?;
+    publish_stage(
+        &status_path,
+        stage_trace_elapsed_base_s,
+        &total_start,
+        "PERSISTING_PROOF",
+    )?;
     let proof_persist_start = Instant::now();
     if let Some(proof_path) = proof_path {
         snark.save(&proof_path)?;
@@ -285,6 +377,7 @@ pub(crate) fn setup_and_prove(
     proof_type=ProofType::default(),
     disable_selector_compression=false,
     status_path=None,
+    stage_trace_elapsed_base_s=0.0,
 ))]
 fn py_setup_and_prove(
     py: Python<'_>,
@@ -297,6 +390,7 @@ fn py_setup_and_prove(
     proof_type: ProofType,
     disable_selector_compression: bool,
     status_path: Option<PathBuf>,
+    stage_trace_elapsed_base_s: f64,
 ) -> PyResult<PyObject> {
     let result = setup_and_prove(
         witness,
@@ -309,6 +403,7 @@ fn py_setup_and_prove(
         CheckMode::UNSAFE,
         disable_selector_compression,
         status_path,
+        stage_trace_elapsed_base_s,
     )
     .map_err(|e| PyRuntimeError::new_err(format!("Failed fused setup+prove: {e}")))?;
 
@@ -326,6 +421,7 @@ fn py_setup_and_prove(
 #[cfg(feature = "python-bindings")]
 #[pymodule]
 fn _ezkl_fused(_py: Python<'_>, module: &PyModule) -> PyResult<()> {
+    module.add("stage_trace_version", STAGE_TRACE_VERSION)?;
     module.add_function(wrap_pyfunction!(py_setup_and_prove, module)?)?;
     Ok(())
 }
