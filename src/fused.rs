@@ -2,10 +2,11 @@ use crate::circuit::CheckMode;
 use crate::graph::{GraphCircuit, GraphWitness};
 use crate::pfsys::evm::aggregation_kzg::PoseidonTranscript;
 use crate::pfsys::{
-    create_keys, create_proof_circuit, save_pk, save_vk, ProofSplitCommit, ProofType, StrategyType,
+    create_proof_circuit, save_pk, save_vk, ProofSplitCommit, ProofType, StrategyType,
     TranscriptType,
 };
 use crate::Commitments;
+use halo2_proofs::plonk::{keygen_pk, keygen_vk_custom, Circuit};
 use halo2_proofs::poly::ipa::commitment::IPACommitmentScheme;
 use halo2_proofs::poly::ipa::multiopen::{ProverIPA, VerifierIPA};
 use halo2_proofs::poly::ipa::strategy::AccumulatorStrategy as IPAAccumulatorStrategy;
@@ -14,7 +15,7 @@ use halo2_proofs::poly::kzg::commitment::KZGCommitmentScheme;
 use halo2_proofs::poly::kzg::multiopen::{ProverSHPLONK, VerifierSHPLONK};
 use halo2_proofs::poly::kzg::strategy::AccumulatorStrategy as KZGAccumulatorStrategy;
 use halo2_proofs::poly::kzg::strategy::SingleStrategy as KZGSingleStrategy;
-use halo2curves::bn256::{Bn256, G1Affine};
+use halo2curves::bn256::{Bn256, Fr, G1Affine};
 use snark_verifier::loader::native::NativeLoader;
 use snark_verifier::system::halo2::compile;
 use snark_verifier::system::halo2::transcript::evm::EvmTranscript;
@@ -32,7 +33,7 @@ use pyo3::prelude::*;
 #[cfg(feature = "python-bindings")]
 use pyo3::types::PyDict;
 
-const STAGE_TRACE_VERSION: u32 = 1;
+const STAGE_TRACE_VERSION: u32 = 2;
 const STAGE_TRACE_FILENAME: &str = "fused_stage_transitions.csv";
 
 /// Timing information returned by the fused cold path.
@@ -115,6 +116,13 @@ fn publish_stage(
     Ok(())
 }
 
+fn write_keygen_times(vk_time_s: f64, pk_time_s: f64) -> Result<(), Box<dyn Error>> {
+    let mut file = fs::File::create("keygen_times.txt")?;
+    writeln!(file, "{vk_time_s},{pk_time_s}")?;
+    file.flush()?;
+    Ok(())
+}
+
 /// Generate setup artifacts and immediately prove with the in-memory proving
 /// key. This is intentionally a cold-path primitive: callers should use the
 /// normal `prove` entrypoint when a cached proving key already exists.
@@ -165,6 +173,12 @@ pub(crate) fn setup_and_prove(
 
     let (mut snark, keygen_time_s, phase_times) = match commitment {
         Commitments::KZG => {
+            append_stage_trace(
+                &status_path,
+                stage_trace_elapsed_base_s,
+                &total_start,
+                "LOAD_PARAMS",
+            )?;
             // Load the SRS once and reuse it for both key generation and proof
             // generation.
             let params = crate::execute::load_params_prover::<KZGCommitmentScheme<Bn256>>(
@@ -172,11 +186,32 @@ pub(crate) fn setup_and_prove(
                 logrows,
                 Commitments::KZG,
             )?;
-            let pk = create_keys::<KZGCommitmentScheme<Bn256>, GraphCircuit>(
-                &circuit,
-                &params,
-                disable_selector_compression,
+
+            let empty_circuit = <GraphCircuit as Circuit<Fr>>::without_witnesses(&circuit);
+            append_stage_trace(
+                &status_path,
+                stage_trace_elapsed_base_s,
+                &total_start,
+                "KEYGEN_VK",
             )?;
+            let vk_start = Instant::now();
+            let vk = keygen_vk_custom(
+                &params,
+                &empty_circuit,
+                !disable_selector_compression,
+            )?;
+            let vk_time_s = vk_start.elapsed().as_secs_f64();
+
+            append_stage_trace(
+                &status_path,
+                stage_trace_elapsed_base_s,
+                &total_start,
+                "KEYGEN_PK",
+            )?;
+            let pk_start = Instant::now();
+            let pk = keygen_pk(&params, vk, &empty_circuit)?;
+            let pk_time_s = pk_start.elapsed().as_secs_f64();
+            write_keygen_times(vk_time_s, pk_time_s)?;
             let keygen_time_s = keygen_start.elapsed().as_secs_f64();
 
             publish_stage(
@@ -251,16 +286,43 @@ pub(crate) fn setup_and_prove(
             (snark, keygen_time_s, (prove_time_s, key_persist_time_s))
         }
         Commitments::IPA => {
+            append_stage_trace(
+                &status_path,
+                stage_trace_elapsed_base_s,
+                &total_start,
+                "LOAD_PARAMS",
+            )?;
             let params = crate::execute::load_params_prover::<IPACommitmentScheme<G1Affine>>(
                 srs_path,
                 logrows,
                 Commitments::IPA,
             )?;
-            let pk = create_keys::<IPACommitmentScheme<G1Affine>, GraphCircuit>(
-                &circuit,
-                &params,
-                disable_selector_compression,
+
+            let empty_circuit = <GraphCircuit as Circuit<Fr>>::without_witnesses(&circuit);
+            append_stage_trace(
+                &status_path,
+                stage_trace_elapsed_base_s,
+                &total_start,
+                "KEYGEN_VK",
             )?;
+            let vk_start = Instant::now();
+            let vk = keygen_vk_custom(
+                &params,
+                &empty_circuit,
+                !disable_selector_compression,
+            )?;
+            let vk_time_s = vk_start.elapsed().as_secs_f64();
+
+            append_stage_trace(
+                &status_path,
+                stage_trace_elapsed_base_s,
+                &total_start,
+                "KEYGEN_PK",
+            )?;
+            let pk_start = Instant::now();
+            let pk = keygen_pk(&params, vk, &empty_circuit)?;
+            let pk_time_s = pk_start.elapsed().as_secs_f64();
+            write_keygen_times(vk_time_s, pk_time_s)?;
             let keygen_time_s = keygen_start.elapsed().as_secs_f64();
 
             publish_stage(
