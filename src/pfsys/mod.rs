@@ -651,6 +651,30 @@ where
      perf_metrics.cs_degree = pk.get_vk().cs().degree();
      perf_metrics.max_gate_degree = pk.get_vk().cs().max_gate_degree();
      perf_metrics.quotient_poly_degree = pk.get_vk().get_domain().get_quotient_poly_degree();
+     // Persist structural features before entering the expensive proof, so an
+     // aborted prover still leaves its circuit dimensions. Timing fields are
+     // written to the existing CSV only after completion.
+     if let Ok(dir) = env::var("EZKL_LOG_DIR") {
+         let snapshot = serde_json::json!({
+             "n": perf_metrics.n,
+             "k": perf_metrics.k,
+             "extended_k": perf_metrics.extended_k,
+             "quotient_poly_degree": perf_metrics.quotient_poly_degree,
+             "max_gate_degree": perf_metrics.max_gate_degree,
+             "cs_degree": perf_metrics.cs_degree,
+             "num_fixed_columns": perf_metrics.num_fixed_columns,
+             "num_advice_columns": perf_metrics.num_advice_columns,
+             "num_instance_columns": perf_metrics.num_instance_columns,
+             "num_selectors": perf_metrics.num_selectors,
+             "num_challenges": perf_metrics.num_challenges,
+             "minimum_rows": perf_metrics.minimum_rows,
+             "blinding_factors": perf_metrics.blinding_factors,
+         });
+         if let Err(err) = std::fs::write(PathBuf::from(dir).join("halo2_structure.json"), snapshot.to_string()) {
+             log::warn!("Failed to save early circuit structure: {}", err);
+         }
+     }
+
 
 
 
