@@ -761,16 +761,20 @@ fn get_srs(
 ))]
 #[gen_stub_pyfunction]
 fn gen_settings(
+    py: Python<'_>,
     model: PathBuf,
     output: PathBuf,
     py_run_args: Option<PyRunArgs>,
 ) -> Result<bool, PyErr> {
     let run_args: RunArgs = py_run_args.unwrap_or_else(PyRunArgs::new).into();
 
-    crate::execute::gen_circuit_settings(model, output, run_args).map_err(|e| {
-        let err_str = format!("Failed to generate settings: {}", e);
-        PyRuntimeError::new_err(err_str)
-    })?;
+    // Native preparation must not monopolize the Python coordinator's GIL.
+    py.detach(move || {
+        crate::execute::gen_circuit_settings(model, output, run_args)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })
+    .map_err(|e| PyRuntimeError::new_err(format!("Failed to generate settings: {}", e)))?;
 
     Ok(true)
 }
@@ -860,6 +864,7 @@ fn gen_random_data(
 ))]
 #[gen_stub_pyfunction]
 fn calibrate_settings(
+    py: Python<'_>,
     data: String,
     model: PathBuf,
     settings: PathBuf,
@@ -869,20 +874,21 @@ fn calibrate_settings(
     scale_rebase_multiplier: Vec<u32>,
     max_logrows: Option<u32>,
 ) -> PyResult<bool> {
-    crate::execute::calibrate(
-        model,
-        data,
-        settings,
-        target,
-        lookup_safety_margin,
-        scales,
-        scale_rebase_multiplier,
-        max_logrows,
-    )
-    .map_err(|e| {
-        let err_str = format!("Failed to calibrate settings: {}", e);
-        PyRuntimeError::new_err(err_str)
-    })?;
+    py.detach(move || {
+        crate::execute::calibrate(
+            model,
+            data,
+            settings,
+            target,
+            lookup_safety_margin,
+            scales,
+            scale_rebase_multiplier,
+            max_logrows,
+        )
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+    })
+    .map_err(|e| PyRuntimeError::new_err(format!("Failed to calibrate settings: {}", e)))?;
 
     Ok(true)
 }
@@ -927,11 +933,12 @@ fn gen_witness(
     vk_path: Option<PathBuf>,
     srs_path: Option<PathBuf>,
 ) -> PyResult<Py<PyAny>> {
-    let output =
-        crate::execute::gen_witness(model, data, output, vk_path, srs_path).map_err(|e| {
-            let err_str = format!("Failed to generate witness: {}", e);
-            PyRuntimeError::new_err(err_str)
-        })?;
+    let output = py
+        .detach(move || {
+            crate::execute::gen_witness(model, data, output, vk_path, srs_path)
+                .map_err(|e| e.to_string())
+        })
+        .map_err(|e| PyRuntimeError::new_err(format!("Failed to generate witness: {}", e)))?;
     Ok(output.into_pyobject(py).unwrap().unbind())
 }
 
@@ -1109,18 +1116,18 @@ fn prove(
 ))]
 #[gen_stub_pyfunction]
 fn verify(
+    py: Python<'_>,
     proof_path: PathBuf,
     settings_path: PathBuf,
     vk_path: PathBuf,
     srs_path: Option<PathBuf>,
     reduced_srs: bool,
 ) -> Result<bool, PyErr> {
-    crate::execute::verify(proof_path, settings_path, vk_path, srs_path, reduced_srs).map_err(
-        |e| {
-            let err_str = format!("Failed to run verify: {}", e);
-            PyRuntimeError::new_err(err_str)
-        },
-    )?;
+    py.detach(move || {
+        crate::execute::verify(proof_path, settings_path, vk_path, srs_path, reduced_srs)
+            .map_err(|e| e.to_string())
+    })
+    .map_err(|e| PyRuntimeError::new_err(format!("Failed to run verify: {}", e)))?;
 
     Ok(true)
 }
@@ -1149,14 +1156,17 @@ fn verify(
 ))]
 #[gen_stub_pyfunction]
 fn compile_circuit(
+    py: Python<'_>,
     model: PathBuf,
     compiled_circuit: PathBuf,
     settings_path: PathBuf,
 ) -> Result<bool, PyErr> {
-    crate::execute::compile_circuit(model, compiled_circuit, settings_path).map_err(|e| {
-        let err_str = format!("Failed to compile circuit: {}", e);
-        PyRuntimeError::new_err(err_str)
-    })?;
+    py.detach(move || {
+        crate::execute::compile_circuit(model, compiled_circuit, settings_path)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    })
+    .map_err(|e| PyRuntimeError::new_err(format!("Failed to compile circuit: {}", e)))?;
 
     Ok(true)
 }
