@@ -449,6 +449,27 @@ where
         pk.get_vk().cs().num_instance_columns()
     );
 
+    // Persist dimensions before proving so failed jobs remain characterizable.
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Ok(dir) = std::env::var("EZKL_LOG_DIR") {
+        let cs = pk.get_vk().cs();
+        let snapshot = serde_json::json!({
+            "n": params.n(),
+            "k": params.k(),
+            "cs_degree": cs.degree(),
+            "num_fixed_columns": cs.num_fixed_columns(),
+            "num_advice_columns": cs.num_advice_columns(),
+            "num_instance_columns": cs.num_instance_columns(),
+            "num_selectors": cs.num_selectors(),
+            "num_challenges": cs.num_challenges(),
+            "minimum_rows": cs.minimum_rows(),
+            "blinding_factors": cs.blinding_factors(),
+        });
+        if let Err(err) = std::fs::write(std::path::PathBuf::from(dir).join("halo2_structure.json"), snapshot.to_string()) {
+            log::warn!("Failed to save early circuit structure: {}", err);
+        }
+    }
+
     info!("proof started...");
     // not wasm32 unknown
     let now = Instant::now();

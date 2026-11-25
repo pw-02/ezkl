@@ -2828,7 +2828,7 @@ dependencies = [
 [[package]]
 name = "halo2_gadgets"
 version = "0.2.0"
-source = "git+https://github.com/zkonduit/halo2?branch=ac%2Fconditional-compilation-icicle2#01c88842679b4308e43ae5ed91c4183e861669bd"
+source = "git+https://github.com/pw-02/halo2?rev=94d013e2c9dd7f7f54d833dd7f6e47babdfa1130#94d013e2c9dd7f7f54d833dd7f6e47babdfa1130"
 dependencies = [
  "arrayvec 0.7.6",
  "bitvec",
@@ -2845,7 +2845,7 @@ dependencies = [
 [[package]]
 name = "halo2_proofs"
 version = "0.3.0"
-source = "git+https://github.com/zkonduit/halo2#1dd2090741f006fd031a07da7f3c9dfce5e0015e?branch=ac%2Fconditional-compilation-icicle2#01c88842679b4308e43ae5ed91c4183e861669bd"
+source = "git+https://github.com/pw-02/halo2?rev=94d013e2c9dd7f7f54d833dd7f6e47babdfa1130#94d013e2c9dd7f7f54d833dd7f6e47babdfa1130"
 dependencies = [
  "bincode",
  "blake2b_simd",
