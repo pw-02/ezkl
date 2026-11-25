@@ -139,6 +139,8 @@ pub mod eth;
 ///
 #[cfg(all(feature = "ezkl", not(target_arch = "wasm32")))]
 pub mod execute;
+#[cfg(all(feature = "ezkl", not(target_arch = "wasm32")))]
+mod fused;
 /// Utilities for converting from Halo2 Field types to integers (and vice-versa).
 pub mod fieldutils;
 /// Methods for loading onnx format models and automatically laying them out in
