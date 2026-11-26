@@ -632,6 +632,26 @@ where
     Ok(vk)
 }
 
+// Append file-level timings to the same optional component report as Halo2.
+fn pk_io_metric(operation: &str, bytes: Option<u64>, seconds: f64) {
+    use std::fs::OpenOptions;
+    if std::env::var("ZKINFER_PROFILING_MODE").as_deref() == Ok("basic") {
+        return;
+    }
+    let path = std::env::var("ZKINFER_HALO2_KEY_METRICS_FILE").ok()
+        .filter(|s| !s.is_empty()).map(PathBuf::from)
+        .or_else(|| std::env::var("EZKL_LOG_DIR").ok().filter(|s| !s.is_empty())
+            .map(|s| PathBuf::from(s).join("halo2_key_metrics.csv")));
+    let Some(path) = path else { return };
+    if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(path) {
+        if file.metadata().map(|m| m.len() == 0).unwrap_or(false) {
+            let _ = writeln!(file, "component,operation,bytes,duration_s");
+        }
+        let bytes = bytes.map(|n| n.to_string()).unwrap_or_default();
+        let _ = writeln!(file, "pk_total,{operation},{bytes},{seconds:.9}");
+    }
+}
+
 /// Loads a [ProvingKey] at `path`.
 pub fn load_pk<Scheme: CommitmentScheme, C: Circuit<Scheme::Scalar>>(
     path: PathBuf,
@@ -644,6 +664,7 @@ where
     debug!("loading proving key from {:?}", path);
     let start = instant::Instant::now();
     let f = File::open(path.clone()).map_err(|e| PfsysError::LoadPk(format!("{}", e)))?;
+    let bytes = f.metadata().ok().map(|m| m.len());
     let mut reader = BufReader::with_capacity(*EZKL_BUF_CAPACITY, f);
     let pk = ProvingKey::<Scheme::Curve>::read::<_, C>(
         &mut reader,
@@ -652,6 +673,7 @@ where
     )
     .map_err(|e| PfsysError::LoadPk(format!("{}", e)))?;
     let elapsed = start.elapsed();
+    pk_io_metric("materialize", bytes, elapsed.as_secs_f64());
     info!("loaded proving key in {:?}", elapsed);
     Ok(pk)
 }
@@ -676,10 +698,12 @@ where
         Err(err) => return Err(io::Error::new(io::ErrorKind::InvalidInput, err)),
     };
     info!("saving proving key with representation {:?}", representation);
+    let start = instant::Instant::now();
     let f = File::create(path)?;
     let mut writer = BufWriter::with_capacity(*EZKL_BUF_CAPACITY, f);
     pk.write_with_representation(&mut writer, serde_format_from_str(&EZKL_KEY_FORMAT), representation)?;
     writer.flush()?;
+    pk_io_metric("serialize_total", writer.get_ref().metadata().ok().map(|m| m.len()), start.elapsed().as_secs_f64());
     info!("done saving proving key ✅");
     Ok(())
 }
