@@ -31,7 +31,14 @@ pub const RESERVED_BLINDING_ROWS_PAD: usize = 3;
 #[cfg(all(feature = "ezkl", not(target_arch = "wasm32")))]
 lazy_static::lazy_static! {
     /// an optional directory to read and write the lookup table cache
-    pub static ref LOOKUP_CACHE: String = format!("{}/cache", *EZKL_REPO_PATH);
+    pub static ref LOOKUP_CACHE: String = {
+        // Disabled by default: shared table caches are not concurrency-safe.
+        if std::env::var("EZKL_LOOKUP_CACHE").as_deref() == Ok("true") {
+            format!("{}/cache", *EZKL_REPO_PATH)
+        } else {
+            String::new()
+        }
+    };
 }
 
 /// The lookup table cache is disabled on wasm32 target.
