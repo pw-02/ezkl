@@ -664,10 +664,21 @@ pub fn save_pk<C: SerdeObject + CurveAffine>(
 where
     C::ScalarExt: FromUniformBytes<64> + SerdeObject,
 {
-    debug!("saving proving key 💾");
+    use halo2_proofs::plonk::ProvingKeyRepresentation;
+    let representation = match std::env::var("EZKL_PK_REPRESENTATION") {
+        Err(std::env::VarError::NotPresent) => ProvingKeyRepresentation::Full,
+        Ok(value) => match value.as_str() {
+            "full" => ProvingKeyRepresentation::Full,
+            "reduced" => ProvingKeyRepresentation::Reduced,
+            "compact" => ProvingKeyRepresentation::Compact,
+            _ => return Err(io::Error::new(io::ErrorKind::InvalidInput, "EZKL_PK_REPRESENTATION must be full, reduced or compact")),
+        },
+        Err(err) => return Err(io::Error::new(io::ErrorKind::InvalidInput, err)),
+    };
+    info!("saving proving key with representation {:?}", representation);
     let f = File::create(path)?;
     let mut writer = BufWriter::with_capacity(*EZKL_BUF_CAPACITY, f);
-    pk.write(&mut writer, serde_format_from_str(&EZKL_KEY_FORMAT))?;
+    pk.write_with_representation(&mut writer, serde_format_from_str(&EZKL_KEY_FORMAT), representation)?;
     writer.flush()?;
     info!("done saving proving key ✅");
     Ok(())
