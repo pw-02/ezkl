@@ -32,12 +32,11 @@ pub const RESERVED_BLINDING_ROWS_PAD: usize = 3;
 lazy_static::lazy_static! {
     /// an optional directory to read and write the lookup table cache
     pub static ref LOOKUP_CACHE: String = {
-        // Enabled by default; disable explicitly for concurrent experiments.
-        // Shared table caches are not concurrency-safe.
-        if std::env::var("EZKL_LOOKUP_CACHE").as_deref() == Ok("false") {
-            String::new()
-        } else {
+        // Disabled by default: shared table caches are not concurrency-safe.
+        if std::env::var("EZKL_LOOKUP_CACHE").as_deref() == Ok("true") {
             format!("{}/cache", *EZKL_REPO_PATH)
+        } else {
+            String::new()
         }
     };
 }
