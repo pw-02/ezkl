@@ -1503,7 +1503,6 @@ fn ezkl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(mock, m)?)?;
     m.add_function(wrap_pyfunction!(setup, m)?)?;
     m.add_function(wrap_pyfunction!(prove, m)?)?;
-    m.add_function(wrap_pyfunction!(crate::fused::py_setup_and_prove, m)?)?;
     m.add_function(wrap_pyfunction!(verify, m)?)?;
     m.add_function(wrap_pyfunction!(gen_srs, m)?)?;
     m.add_function(wrap_pyfunction!(get_srs, m)?)?;
