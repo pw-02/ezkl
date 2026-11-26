@@ -2828,7 +2828,7 @@ dependencies = [
 [[package]]
 name = "halo2_gadgets"
 version = "0.2.0"
-source = "git+https://github.com/pw-02/halo2?rev=cfbb25779badb3d050283f4e34c77706cb0a2da9#cfbb25779badb3d050283f4e34c77706cb0a2da9"
+source = "git+https://github.com/pw-02/halo2?rev=ac7fee4de42e253434853746357cbbd8990d57ea#ac7fee4de42e253434853746357cbbd8990d57ea"
 dependencies = [
  "arrayvec 0.7.6",
  "bitvec",
@@ -2845,7 +2845,7 @@ dependencies = [
 [[package]]
 name = "halo2_proofs"
 version = "0.3.0"
-source = "git+https://github.com/pw-02/halo2?rev=cfbb25779badb3d050283f4e34c77706cb0a2da9#cfbb25779badb3d050283f4e34c77706cb0a2da9"
+source = "git+https://github.com/pw-02/halo2?rev=ac7fee4de42e253434853746357cbbd8990d57ea#ac7fee4de42e253434853746357cbbd8990d57ea"
 dependencies = [
  "bincode",
  "blake2b_simd",
