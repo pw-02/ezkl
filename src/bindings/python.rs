@@ -1484,6 +1484,10 @@ define_stub_info_gatherer!(stub_info);
 #[pymodule]
 fn ezkl(m: &Bound<'_, PyModule>) -> PyResult<()> {
     pyo3_log::init();
+
+    #[cfg(feature = "gpu-accelerated")]
+    crate::execute::set_device();
+
     m.add_class::<PyRunArgs>()?;
     m.add_class::<PyG1Affine>()?;
     m.add_class::<PyG1>()?;
