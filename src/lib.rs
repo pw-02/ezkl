@@ -174,7 +174,7 @@ pub type Scale = i32;
 lazy_static! {
     /// The capacity of the buffer used for writing to disk
     pub static ref EZKL_BUF_CAPACITY: usize = std::env::var("EZKL_BUF_CAPACITY")
-        .unwrap_or("8000".to_string())
+        .unwrap_or("4194304".to_string())
         .parse()
         .unwrap();
     /// The serialization format for the keys
@@ -186,7 +186,7 @@ lazy_static! {
 const EZKL_KEY_FORMAT: &str = "raw-bytes";
 
 #[cfg(any(not(feature = "ezkl"), target_arch = "wasm32"))]
-const EZKL_BUF_CAPACITY: &usize = &8000;
+const EZKL_BUF_CAPACITY: &usize = &4194304;
 
 /// Parameters specific to a proving run
 ///

@@ -16,7 +16,7 @@ crate-type = ["cdylib", "rlib", "staticlib"]
 
 
 [dependencies]
-halo2_gadgets = { git = "https://github.com/pw-02/halo2", rev = "94d013e2c9dd7f7f54d833dd7f6e47babdfa1130" }
+halo2_gadgets = { git = "https://github.com/pw-02/halo2", rev = "52452c096ed3377e9ec16c46eb793b4f3e000d6e" }
 halo2curves = { git = "https://github.com/privacy-scaling-explorations/halo2curves", rev = "b753a832e92d5c86c5c997327a9cf9de86a18851", features = [
     "derive_serde",
 ] }
@@ -268,12 +268,12 @@ reusable-verifier = []
 
 
 [patch.'https://github.com/zkonduit/halo2']
-halo2_proofs = { git = "https://github.com/pw-02/halo2", package = "halo2_proofs", rev = "94d013e2c9dd7f7f54d833dd7f6e47babdfa1130", features = [
+halo2_proofs = { git = "https://github.com/pw-02/halo2", package = "halo2_proofs", rev = "52452c096ed3377e9ec16c46eb793b4f3e000d6e", features = [
     "circuit-params", "mv-lookup"
 ] }
 
 [patch.'https://github.com/zkonduit/halo2#f441c920be45f8f05d2c06a173d82e8885a5ed4d']
-halo2_proofs = { git = "https://github.com/pw-02/halo2", package = "halo2_proofs", rev = "94d013e2c9dd7f7f54d833dd7f6e47babdfa1130", features = [
+halo2_proofs = { git = "https://github.com/pw-02/halo2", package = "halo2_proofs", rev = "52452c096ed3377e9ec16c46eb793b4f3e000d6e", features = [
     "circuit-params", "mv-lookup"
 ] }
 
